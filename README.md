@@ -39,49 +39,6 @@ notebooks/
   02_additional_figures.ipynb   the comparison figures for the thesis
 ```
 
-## The core design decision: one data-prep step, everyone reads from it
-
-Every method needs the same three things: the batch-corrected case/control
-repertoires, and a list of candidate clonotypes to test. Originally each
-method's script downloaded and batch-corrected the cohort itself — wasteful,
-and each one ended up selecting a *slightly* different candidate set (their
-own internal incidence filters disagreed with each other), which silently
-distorted the FDR comparison between methods.
-
-`01_prepare_data.py` now does this exactly once and writes it to disk:
-
-- `case_repertoire_corrected.tsv` / `control_repertoire_corrected.tsv` — the
-  full train cohort, batch-corrected.
-- `test_case_repertoire_corrected.tsv` / `test_control_repertoire_corrected.tsv`
-  — the held-out donors, run through the *same* fitted correction (fit-on-train,
-  transform-on-test — the correction itself never sees the test donors).
-- `candidates.tsv` — clonotypes seen in ≥3 case donors (train only). This is
-  the single, shared list of hypotheses every method is evaluated against.
-
-Scripts `02`-`05` (and `redcea/prepare_redcea_input.py`) only *read* these
-files. Re-running a method is fast; re-running `01_prepare_data.py` is the
-only step that touches the network or the raw per-donor files.
-
-### Why the shared candidate list is applied differently per method
-
-- **Fisher** takes the list through `vdjtools.biomarker.association`'s native
-  `candidates=` parameter: the full cohort is still used for the incidence
-  statistics, only the set of *tested* hypotheses is restricted — which is
-  exactly what that parameter is for.
-- **ALICE, TCRnet, tcrdist3** have no equivalent parameter. Restricting their
-  *input* to the candidate list ahead of time would distort neighbour
-  counting (a candidate's neighbour that itself falls short of the donor
-  threshold would silently stop being counted, deflating the signal). So
-  these three run on the **full** batch-corrected repertoire, and the
-  candidate restriction + a fresh Benjamini–Hochberg correction are applied
-  **afterwards**, to the raw p-values each method reports. The result column
-  `fdr_shared` in every method's output file is therefore computed over the
-  exact same number of hypotheses across all four methods.
-- **REDCEA** tests clusters, not individual clonotypes — a genuinely
-  different unit of hypothesis, kept as a separate comparison axis rather
-  than forced into the same FDR pool (see `notebooks/02_final_report_figures.ipynb`).
-
-
 ## Running
 
 ```bash
